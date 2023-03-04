@@ -1,0 +1,24 @@
+import pyaudio
+import socket
+
+FORMAT = pyaudio.paInt16
+CHANNELS = 1
+RATE = 44100
+CHUNK = 1024
+RECORD_SECONDS = 5
+HOST = '192.168.10.218' # Create pyaudio object
+p = pyaudio.PyAudio()
+
+# Create stream
+stream = p.open(format=FORMAT, channels=CHANNELS, rate=RATE, input=True, output=True,  frames_per_buffer=CHUNK)
+
+# Send audio data to remote PC
+num_frames = int(RECORD_SECONDS * RATE / CHUNK)
+for i in range(0, num_frames):
+    data = stream.read(CHUNK,exception_on_overflow = False)
+    # Open socket and write audio data here
+
+stream.stop_stream()
+stream.close()
+
+p.terminate()
