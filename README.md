@@ -9,14 +9,14 @@ Python3
 Not yet compleet just started the development
 
 # API Implimentation of trancever
-   TX frequency
-   Tx Power
-   TX Modelation mode (USB for now)
-   TX PTT
-   TX SSB Filter frequency
-   TX IF Frequency ofsset
-   TX IF gain
-   
-   RX Frequency
-   RX Modelation mode USB
-   RX mute on TX on / off
+      TX frequency
+      Tx Power
+      TX Modelation mode (USB for now)
+      TX PTT
+      TX SSB Filter frequency
+      TX IF Frequency ofsset
+      TX IF gain
+
+      RX Frequency
+      RX Modelation mode USB
+      RX mute on TX on / off
