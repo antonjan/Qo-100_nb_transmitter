@@ -28,8 +28,10 @@ class MainFrame(wx.Frame):
         pnl = wx.Panel(self,size=(800,600))
         
         # adding TX button
-        closeButton = wx.Button(pnl, label='TX', pos=(150, 20))
-        closeButton.Bind(wx.EVT_BUTTON, self.OnTX)
+        txButton = wx.Button(pnl, label='TX', pos=(150, 20))
+        txButton.Bind(wx.EVT_BUTTON, self.OnTX)
+        rxButton = wx.Button(pnl, label='RX', pos=(150, 60))
+        rxButton.Bind(wx.EVT_BUTTON, self.OnRX)
         self.SetSize((350, 250))
         self.SetTitle('wx.Button')
         self.Centre()
@@ -48,7 +50,7 @@ class MainFrame(wx.Frame):
         self.rb3.Bind(wx.EVT_RADIOBUTTON, self.SetVal)
         self.rbtx.Bind(wx.EVT_RADIOBUTTON, self.SetVal)
         wx.StaticText(pnl, label='TX frequency (Hz)', pos=(15, 110))
-        wx.SpinCtrl(pnl, value='2450500', pos=(15, 130), size=(70, -1), min=2400000, max=24100000)
+        wx.SpinCtrl(pnl, value='2450500', pos=(15, 130), size=(80, -1), min=2400000, max=24100000)
         wx.StaticText(pnl, label='(Hz)', pos=(85, 130))
         slider = wx.Slider(pnl, 5, 6, 1, 10, (120, 130), (110, -1))
         
@@ -101,7 +103,11 @@ class MainFrame(wx.Frame):
 
     def OnTX(self, e):
 
-        wx.MessageBox("New file dialog box")
+        wx.MessageBox("TX on")
+        
+    def OnRX(self, e):
+
+        wx.MessageBox("TX off")    
 
 
     def doLayout(self):
