@@ -6,7 +6,7 @@ CHUNK = 1024 # Size of each audio chunk (measured in samples)
 FORMAT = pyaudio.paInt16 # Audio format (16 bits per sample)
 CHANNELS = 1 # Number of audio channels
 RATE = 44100 # Sampling rate (samples/second)
-WAVE_OUTPUT_FILENAME = "/home/anton/bacar_sstv.wav" # Output file name
+#WAVE_OUTPUT_FILENAME = "/home/anton/bacar_sstv.wav" # Output file name
 
 # Set up audio recording stream
 p = pyaudio.PyAudio()

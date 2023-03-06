@@ -1,21 +1,48 @@
 #!/usr/bin/env python
 """
-Hello World, but with more meat.
+QO-100 Remite interface
+sudo modprobe snd-aloop
+aplay -l
+arecord -l
+speaker-test -c2 -D hw:0,0
+arecord -D hw:0,1 -f S16_LE -c 2 -r 48000 audio.wav
+/etc/asound.conf
+#/usr/share/alsa/alsa.conf 
 """
 
 import wx
 import wx.html
 import wx.adv
+import socket
+import pyaudio
 #import webbrowser
 #from rtlsdr import *
 #from numpy import *
 import time
+import wx.lib.masked as masked
 from pylab import *
+CHUNK = 1024 # Size of each audio chunk (measured in samples)
+FORMAT = pyaudio.paInt16 # Audio format (16 bits per sample)
+CHANNELS = 1 # Number of audio channels
+RATE = 44100 # Sampling rate (samples/second)
+audioDevice = [] #['Mic', 'line in', 'Python', 'Java', 'Perl'] 
+do_not_continue = False
 
 class MainFrame(wx.Frame):
     """
     Main frame
     """
+    def getAudioDeviceList():    
+        p = pyaudio.PyAudio()
+        for i in range(p.get_device_count()):
+           print (p.get_device_info_by_index(i),"\n")
+           audioDevice.append(p.get_device_info_by_index(i))
+           #audioDevice.Append(i)
+           print ("audio list = ",audioDevice)
+                      #comboAudio.SetSelection(sel)
+           #sizer.Add(comboAudio)
+        return audioDevice      
+
 
     def __init__(self, parent, title):
         # ensure the parent's __init__ is called
@@ -28,35 +55,56 @@ class MainFrame(wx.Frame):
         pnl = wx.Panel(self,size=(800,600))
         
         # adding TX button
-        txButton = wx.Button(pnl, label='TX', pos=(150, 20))
-        txButton.Bind(wx.EVT_BUTTON, self.OnTX)
-        rxButton = wx.Button(pnl, label='RX', pos=(150, 60))
+        txButton = wx.Button(pnl, label='TX', pos=(150, 55))
+        txButton.Bind(wx.EVT_BUTTON, self.SendMicStreem)
+        comboAudio = wx.ComboBox(pnl,pos=(150, 20),choices=audioDevice )
+        comboAudio.Bind(wx.EVT_COMBOBOX, self.OnComboAudio)
+        #audioDeviseData = getAudioDeviceList() 
+        #sizer.Add(combo, pos=(4, 1), span=(1, 3),
+        #    flag=wx.TOP|wx.EXPAND, border=5)
+        #  rx button
+        rxButton = wx.Button(pnl, label='RX', pos=(290, 55))
         rxButton.Bind(wx.EVT_BUTTON, self.OnRX)
         self.SetSize((350, 250))
         self.SetTitle('wx.Button')
         self.Centre()
         #Adding TX frequency
-        wx.StaticBox(pnl, label='TX Info', pos=(5, 5), size=(280, 170))
+        wx.StaticBox(pnl, label='TX Info', pos=(5, 5), size=(440, 170))
         wx.StaticText(pnl, label='Audio Input', pos=(15, 30))
-#        wx.CheckBox(pnl, label='1khz tone', pos=(15, 30))
-#        wx.CheckBox(pnl, label='Wav file', pos=(15, 55))
-#        wx.CheckBox(pnl, label='Mic', pos=(15, 75))
         self.rb1 = wx.RadioButton(pnl, label='1khz tone', pos=(15, 50))
         self.rb2 = wx.RadioButton(pnl, label='Wav file', pos=(15, 70))
         self.rb3 = wx.RadioButton(pnl, label='Mic', pos=(15, 90))
-        self.rbtx = wx.RadioButton(pnl, label='TX ON', pos=(90, 90))
+        self.rbtx = wx.RadioButton(pnl, label='TX ON', pos=(300, 90))
         self.rb1.Bind(wx.EVT_RADIOBUTTON, self.SetVal)
         self.rb2.Bind(wx.EVT_RADIOBUTTON, self.SetVal)
         self.rb3.Bind(wx.EVT_RADIOBUTTON, self.SetVal)
         self.rbtx.Bind(wx.EVT_RADIOBUTTON, self.SetVal)
         wx.StaticText(pnl, label='TX frequency (Hz)', pos=(15, 110))
-        wx.SpinCtrl(pnl, value='2450500', pos=(15, 130), size=(80, -1), min=2400000, max=24100000)
-        wx.StaticText(pnl, label='(Hz)', pos=(85, 130))
-        slider = wx.Slider(pnl, 5, 6, 1, 10, (120, 130), (110, -1))
-        
-        btn = wx.Button(pnl, label='Ok', pos=(90, 185), size=(60, -1))
+        self.frequency = wx.SpinCtrl(pnl,-1,"", pos=(15, 130), size=(145, -1))
+        self.frequency.SetRange(2400000, 2410000)
+        self.frequency.SetValue(2400100)
+        #wx.StaticText(pnl, label='(Hz)', pos=(130, 140))
+        wx.StaticText(pnl, label='Fine tune', pos=(170, 110))
+        self.slider = wx.Slider(pnl,value=50, minValue=0, maxValue=100, pos=(153, 130),size=(105, -1))
+        self.slider.Bind(wx.EVT_SLIDER, self.OnSliderScroll) 
+        dnButton = wx.Button(pnl, label='<', pos=(250, 130),size=(40, -1))
+        dnButton.Bind(wx.EVT_BUTTON, self.OnDN)
+        dn2Button = wx.Button(pnl, label='<<', pos=(290, 130),size=(40, -1))
+        dn2Button.Bind(wx.EVT_BUTTON, self.OnDN2)
+        upButton = wx.Button(pnl, label='>', pos=(370, 130),size=(40, -1))
+        upButton.Bind(wx.EVT_BUTTON, self.OnUP)
+        up2Button = wx.Button(pnl, label='>>', pos=(330, 130),size=(40, -1))
+        up2Button.Bind(wx.EVT_BUTTON, self.OnUP2)
+        # the TCP connection details
+        wx.StaticBox(pnl, label='TCP connection details', pos=(5, 190), size=(280, 270))
+        wx.StaticText(pnl, label='TCP Adress', pos=(15, 210))
+        wx.StaticText(pnl, label='Port', pos=(190, 210))
+        #control = masked.IpAddrCtrl(pnl, pos=(5, 240)) #, mask = '###.###.###.###') #,defaultValue='192.168.010.218')
+        ipaddr1 = wx.TextCtrl( pnl, -1, pos=(15, 240),size=(170, -1),value='192.168.10.218')
+        port1 = masked.TextCtrl( pnl, -1, pos=(190, 240),size=(70, -1),mask = '#####' ,defaultValue='12345')
+        btn = wx.Button(pnl, label='Connect', pos=(90, 300), size=(60, -1))
 
-        btn.Bind(wx.EVT_BUTTON, self.OnClose)
+        btn.Bind(wx.EVT_BUTTON, self.OnConnect)
         
 
         self.SetSize((270, 250))
@@ -104,6 +152,7 @@ class MainFrame(wx.Frame):
     def OnTX(self, e):
 
         wx.MessageBox("TX on")
+        SendMicStreem()
         
     def OnRX(self, e):
 
@@ -250,7 +299,7 @@ class MainFrame(wx.Frame):
         info.SetWebSite('https://www.giga.co.za/ocart')
         info.SetLicence(licence)
         info.AddDeveloper('Anton Janovsky ZR6AIC')
-        info.AddDocWriter('Anton Janovsky ZR6AIC')
+        info.AddDocWriter('----')
         info.AddArtist('----')
         info.AddTranslator('----')
 
@@ -271,19 +320,91 @@ class MainFrame(wx.Frame):
     def OnStop(self, event):
         """Stop recording rtl power measurmrnts."""
         sdr.read_samples_async()
-#       wx.MessageBox("Stop recording rtl Power Measurements")            
         
-#    def OnAboutBox(self, e):
+        
+    def OnDN(self,event):
+        """Decriment frequency"""
+        res = self.frequency.GetValue()
+        assert isinstance(res, int)
+        print (res)
+        self.frequency.SetValue(res - 100)
+        
+    def OnDN2(self,event):
+        """Decriment frequency"""
+        res = self.frequency.GetValue()
+        assert isinstance(res, int)
+        print (res)
+        self.frequency.SetValue(res - 500)
+        
+    def OnUP(self,event):
+        """Incriment frequency"""
+        res = self.frequency.GetValue()
+        assert isinstance(res, int)
+        print (res)
+        self.frequency.SetValue(res + 100)
+        
+    def OnUP2(self,event):
+        """Incriment frequency"""
+        res = self.frequency.GetValue()
+        assert isinstance(res, int)
+        print (res)
+        self.frequency.SetValue(res + 500)
+    
+    def OnConnect(self,event):
+        """Connect to host to send Mic Audio"""
+        wx.MessageBox("Connecting to host")
+        
+    def OnSliderScroll(self,event):
+        res = self.frequency.GetValue()
+        assert isinstance(res, int)
+        obj = event.GetEventObject() 
+        val = obj.GetValue()
+        self.frequency.SetValue(res + val) 
+        print (val)     
+        
+    def OnComboAudio(self,event):
+        """Get all Audio Devicess"""
+        #self.label.SetLabel("selected "+ comboAudio.GetValue() +" from Combobox")
+        p = pyaudio.PyAudio()
+        for i in range(p.get_device_count()):
+              print (p.get_device_info_by_index(i),"\n")
+              audioDevice.append(p.get_device_info_by_index(i))
+              print ("audio list = ",audioDevice) 
+              wx.MessageBox("selected "+ self.comboAudio.GetValue() +" from Combobox")
+              return  audioDevice
+    def SendMicStreem(self,event):
+        if do_not_continue:
+           print("stop streeming")			
+           return  # implicitly, this is the same as saying `return None` 
+        # Set up audio recording stream
+        #as_loopback = True
+        p = pyaudio.PyAudio()
+        stream = p.open(format=FORMAT,
+           channels=CHANNELS,
+           rate=RATE,   #rate=config.MIC_RATE,
+           input=True,
+           frames_per_buffer=CHUNK)
+           #input_device_index=1)
 
+# Set up network connection
+        SERVER_IP = '192.168.10.218' # Replace with the IP address of remote machine
+        SERVER_PORT = 12345 # Choose a port number that is not used by other applications
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.connect((SERVER_IP, SERVER_PORT))
 
+# Begin audio streaming
+        print("Streaming audio...")
+        
  
          
         
 if __name__ == '__main__':
     # When this module is run (not imported) then create the app, the
     # frame, show it, and start the event loop.
+      
       app = wx.App()
       frm = MainFrame(None, title='Geo Heatmap recorder')
 #    frm = MyHtmlFrame(None, "Simple HTML File Viewer")  
       frm.Show()
+      
       app.MainLoop()
