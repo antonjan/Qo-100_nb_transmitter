@@ -9,12 +9,18 @@ arecord -D hw:0,1 -f S16_LE -c 2 -r 48000 audio.wav
 /etc/asound.conf
 #/usr/share/alsa/alsa.conf 
 """
-
+import time
+import xmlrpc.client
 import wx
 import wx.html
 import wx.adv
 import socket
 import pyaudio
+import threading
+from threading import Thread, Event
+from time import sleep
+from queue import Queue
+
 #import webbrowser
 #from rtlsdr import *
 #from numpy import *
@@ -25,8 +31,12 @@ CHUNK = 1024 # Size of each audio chunk (measured in samples)
 FORMAT = pyaudio.paInt16 # Audio format (16 bits per sample)
 CHANNELS = 1 # Number of audio channels
 RATE = 44100 # Sampling rate (samples/second)
-audioDevice = [] #['Mic', 'line in', 'Python', 'Java', 'Perl'] 
+audioDevice = 0
 do_not_continue = False
+maxValue = 2**16
+bars = 50
+audioInputDevice=[]
+audioInterface = 0
 
 class MainFrame(wx.Frame):
     """
@@ -56,21 +66,18 @@ class MainFrame(wx.Frame):
         
         # adding TX button
         txButton = wx.Button(pnl, label='TX', pos=(150, 55))
-        txButton.Bind(wx.EVT_BUTTON, self.SendMicStreem)
-        comboAudio = wx.ComboBox(pnl,pos=(150, 20),choices=audioDevice )
-        comboAudio.Bind(wx.EVT_COMBOBOX, self.OnComboAudio)
-        #audioDeviseData = getAudioDeviceList() 
-        #sizer.Add(combo, pos=(4, 1), span=(1, 3),
-        #    flag=wx.TOP|wx.EXPAND, border=5)
-        #  rx button
+        txButton.Bind(wx.EVT_BUTTON, self.OnTX) #self.SendMicStreem)
+        self.comboAudio = wx.SpinCtrl(pnl,-1,"", pos=(150, 20), size=(140, -1))
+        self.comboAudio.SetRange(0, 64)
+        self.comboAudio.SetValue(22)
         rxButton = wx.Button(pnl, label='RX', pos=(290, 55))
         rxButton.Bind(wx.EVT_BUTTON, self.OnRX)
         self.SetSize((350, 250))
         self.SetTitle('wx.Button')
         self.Centre()
         #Adding TX frequency
-        wx.StaticBox(pnl, label='TX Info', pos=(5, 5), size=(440, 170))
-        wx.StaticText(pnl, label='Audio Input', pos=(15, 30))
+        wx.StaticBox(pnl, label='TX Info', pos=(5, 5), size=(440, 190))
+        wx.StaticText(pnl, label='Audio Input device', pos=(15, 30))
         self.rb1 = wx.RadioButton(pnl, label='1khz tone', pos=(15, 50))
         self.rb2 = wx.RadioButton(pnl, label='Wav file', pos=(15, 70))
         self.rb3 = wx.RadioButton(pnl, label='Mic', pos=(15, 90))
@@ -95,20 +102,21 @@ class MainFrame(wx.Frame):
         upButton.Bind(wx.EVT_BUTTON, self.OnUP)
         up2Button = wx.Button(pnl, label='>>', pos=(330, 130),size=(40, -1))
         up2Button.Bind(wx.EVT_BUTTON, self.OnUP2)
+        self.audioGage = wx.Gauge(pnl, range = 90, pos = (15, 160),size=(400, -1))
         # the TCP connection details
-        wx.StaticBox(pnl, label='TCP connection details', pos=(5, 190), size=(280, 270))
-        wx.StaticText(pnl, label='TCP Adress', pos=(15, 210))
-        wx.StaticText(pnl, label='Port', pos=(190, 210))
+        wx.StaticBox(pnl, label='TCP connection details', pos=(5, 200), size=(280, 150))
+        wx.StaticText(pnl, label='TCP Adress', pos=(15, 220))
+        wx.StaticText(pnl, label='Port', pos=(190, 220))
         #control = masked.IpAddrCtrl(pnl, pos=(5, 240)) #, mask = '###.###.###.###') #,defaultValue='192.168.010.218')
         ipaddr1 = wx.TextCtrl( pnl, -1, pos=(15, 240),size=(170, -1),value='192.168.10.218')
         port1 = masked.TextCtrl( pnl, -1, pos=(190, 240),size=(70, -1),mask = '#####' ,defaultValue='12345')
-        btn = wx.Button(pnl, label='Connect', pos=(90, 300), size=(60, -1))
+        btn = wx.Button(pnl, label='Connect', pos=(15, 300), size=(60, -1))
 
         btn.Bind(wx.EVT_BUTTON, self.OnConnect)
         
 
-        self.SetSize((270, 250))
-        self.SetTitle('Static box')
+        self.SetSize((450, 600))
+        self.SetTitle('QO-100 Remote Transmitter')
         self.Centre()
         self.Show(True)          
         # put some text with a larger bold font on it
@@ -150,14 +158,33 @@ class MainFrame(wx.Frame):
            
 
     def OnTX(self, e):
-
-        wx.MessageBox("TX on")
-        SendMicStreem()
+        self.do_not_continue = False
+        print( "   what  " ,self.do_not_continue)
+        print("start stream")
+        # create a new Worker thread
+        event.clear() # clear stop event if it was stoped before
+        audioInterface = self.comboAudio.GetValue()
+        print("audio device = " , audioInterface)
+        queue.put(audioInterface) 
+        threadStreem = WorkerStreamming(event)
+        threadStreem.start()
+        #wx.MessageBox("TX ON")
+        s = xmlrpc.client.ServerProxy('http://192.168.10.96:8008')
+        print("ptt on")
+        print(s.set_ptt(1))
+        print ("send stream")
         
     def OnRX(self, e):
-
-        wx.MessageBox("TX off")    
-
+        self.do_not_continue = True
+        print( "   what  " ,self.do_not_continue)
+        event.set() # stop the thread
+        print(" stop stream")
+        #wx.MessageBox("TX on")
+        s = xmlrpc.client.ServerProxy('http://192.168.10.96:8008')
+        print("ptt OFF")
+        print(s.set_ptt(0))
+        print ("stream stoped")
+        
 
     def doLayout(self):
         ''' Layout the controls by means of sizers. '''
@@ -360,7 +387,7 @@ class MainFrame(wx.Frame):
         obj = event.GetEventObject() 
         val = obj.GetValue()
         self.frequency.SetValue(res + val) 
-        print (val)     
+        print (val + res )     
         
     def OnComboAudio(self,event):
         """Get all Audio Devicess"""
@@ -372,9 +399,12 @@ class MainFrame(wx.Frame):
               print ("audio list = ",audioDevice) 
               wx.MessageBox("selected "+ self.comboAudio.GetValue() +" from Combobox")
               return  audioDevice
-    def SendMicStreem(self,event):
+              
+   
+#Streaming thread        
+    def streamThread(self):
         if do_not_continue:
-           print("stop streeming")			
+           print("stop streeming")
            return  # implicitly, this is the same as saying `return None` 
         # Set up audio recording stream
         #as_loopback = True
@@ -385,26 +415,98 @@ class MainFrame(wx.Frame):
            input=True,
            frames_per_buffer=CHUNK)
            #input_device_index=1)
+        while True:
+           data = np.fromstring(stream.read(1024),dtype=np.int16)
+           dataL = data[0::2]
+           dataR = data[1::2]
+           peakL = np.abs(np.max(dataL)-np.min(dataL))/maxValue
+           peakR = np.abs(np.max(dataR)-np.min(dataR))/maxValue
+           lString = "#"*int(peakL*bars)+"-"*int(bars-peakL*bars)
+           rString = "#"*int(peakR*bars)+"-"*int(bars-peakR*bars)
+           #print("L=[%s]\tR=[%s]"%(lString, rString) , end="\r")
+           self.audioGage.SetValue(int(peakL*100)) 
+           print (int(peakL*100) , " " , self.comboAudio.GetValue() ,end="\r")
+           time.sleep(0.01)           
 
 # Set up network connection
-        SERVER_IP = '192.168.10.218' # Replace with the IP address of remote machine
+        SERVER_IP = '192.168.10.96' # Replace with the IP address of remote machine
         SERVER_PORT = 12345 # Choose a port number that is not used by other applications
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect((SERVER_IP, SERVER_PORT))
 
 # Begin audio streaming
         print("Streaming audio...")
+
+# Start Streaming thread        
+    def SendMicStreem(self,event):
+        """Stream Audio"""
+        # create a thread
+        #event = Event()
+        #self.thread = threading.Thread(target=self.streamThread) #,args=(event))
+        #self.thread.start() 
         
- 
-         
+class WorkerStreamming(Thread,Queue):
+    def __init__(self, event, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.event = event
+        #self.queue = queue.Queue()
+        
+    def run(self) -> None:
+        p = pyaudio.PyAudio()
+        audio_port = queue.get()
+        print("audio pot" ,audio_port)
+        stream = p.open(format=FORMAT,
+           channels=CHANNELS,
+           rate=RATE,   #rate=config.MIC_RATE,
+           input=True,
+           frames_per_buffer=CHUNK,
+           input_device_index= audio_port)
+        
+        
+        data = np.fromstring(stream.read(1024),dtype=np.int16)
+        dataL = data[0::2]
+        dataR = data[1::2]
+        peakL = np.abs(np.max(dataL)-np.min(dataL))/maxValue
+        peakR = np.abs(np.max(dataR)-np.min(dataR))/maxValue
+        lString = "#"*int(peakL*bars)+"-"*int(bars-peakL*bars)
+        rString = "#"*int(peakR*bars)+"-"*int(bars-peakR*bars)
+        #print("L=[%s]\tR=[%s]"%(lString, rString) , end="\r")
+        frm.audioGage.SetValue(int(peakL*100))
+        #item = peakL * 100
+        #queue.put(item, timeout=5)
+        #audioInterfaceLocal = queue.get(audioInterface) 
+        #print (int(peakL*100) , " " , frm.comboAudio.GetValue()) #,end="\r")
+        #print ( "peek =",int(item), "interface nr =" ,audioInterfaceLocal)# ,end="\r")
+        # Set up network connection
+        SERVER_IP = '192.168.10.218' # Replace with the IP address of remote machine
+        SERVER_PORT = 12345 # Choose a port number that is not used by other applications
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.connect((SERVER_IP, SERVER_PORT))
+        # Begin audio streaming
+        print("Streaming audio...")
+        while True:
+            #time.sleep(0.01)  
+            #print('Running ')
+            data = stream.read(CHUNK)
+            sock.sendall(data) # Send audio data to remote machine
+            if self.event.is_set():
+               print('The thread was stopped prematurely.')
+               break
+            else:
+               print('The thread was stopped maturely.')         
         
 if __name__ == '__main__':
     # When this module is run (not imported) then create the app, the
     # frame, show it, and start the event loop.
-      
+      # create a new Event object
+      event = Event()
+      queue = Queue()
       app = wx.App()
       frm = MainFrame(None, title='Geo Heatmap recorder')
+      # create a new Worker thread
+      threadStreem = WorkerStreamming(event)
+      # start the thread
+      
 #    frm = MyHtmlFrame(None, "Simple HTML File Viewer")  
       frm.Show()
-      
       app.MainLoop()
