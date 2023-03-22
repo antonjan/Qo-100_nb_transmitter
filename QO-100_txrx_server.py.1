@@ -33,7 +33,6 @@ maxValue = 2**16
 bars = 50
 audioInputDevice=[]
 audioInterface = 0
-frames = []
 
 class MainFrame(wx.Frame):
     """
@@ -236,64 +235,72 @@ class MainFrame(wx.Frame):
         print (val + res )     
         
            
+class WorkerStreamming(Thread,Queue):
+    def __init__(self, event, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.event = event
+        #self.queue = queue.Queue()
         
-    
+    def run(self) -> None:
+        # Set up constants
+        CHUNK = 1024 # Size of each audio chunk (measured in samples)
+        FORMAT = pyaudio.paInt16 # Audio format (16 bits per sample)
+        CHANNELS = 1 # Number of audio channels
+        RATE = 44100 # Sampling rate (samples/second)
 
-def udpStream(CHUNK):
-
-    udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    udp.bind(("127.0.0.1", 12345))
-
-    while True:
-        soundData, addr = udp.recvfrom(CHUNK*CHANNELS*2)
-        frames.append(soundData)
-        print("receiving audio...")
-    udp.close()
-
-def play(stream, CHUNK):
-    BUFFER = 10
-    
-    while True:
-        try:
-            if len(frames) == BUFFER:
-                while True:
-                    stream.write(frames.pop(0), CHUNK)
-        except IndexError:
-              print("error in index")
+        # Set up network connection
+        LISTEN_IP = '0.0.0.0' # Listen to all incoming connections
+        LISTEN_PORT = 12345 # Choose a port number that is not used by other applications
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind((LISTEN_IP, LISTEN_PORT))
+        #sock.settimeout(0.1)
+        sock.listen(1)
+        conn, addr = sock.accept()
+        conn.settimeout(None)
+        # Set up audio playback stream
+        audio_port = queue.get()
+        print("audio pot" ,audio_port)
+        p = pyaudio.PyAudio()
+        stream = p.open(format=FORMAT,
+                channels=CHANNELS,
+                rate=RATE,
+                output=True,
+                frames_per_buffer=CHUNK)
+                #output_device_index= audio_port)
+                
+        while True:
+           data = conn.recv(CHUNK)
+           stream.write(data) # Play received audio data
+           #time.sleep(0.01)  
+           print('Running ')
+           print(f"Receiving audio from {addr[0]}...")        
+           if event.is_set():
+               print('The thread was stopped ')
+               conn.close()
+               stream.close()
+               sock.detach()
+               sock.close()
+               audio.terminate()
+               break
+           else:
+               print('The thread was stopped maturely.')   
+        # Begin audio streaming
+        print(f"Receiving audio from {addr[0]}...")
         
                  
         
 if __name__ == '__main__':
-    app = wx.App()
-    frm = MainFrame(None, title='QO-100 TX')
-    # create a new Worker thread
-    #threadStreem = WorkerStreamming(event)
-    # start the thread
+    # When this module is run (not imported) then create the app, the
+    # frame, show it, and start the event loop.
+      # create a new Event object
+      event = Event()
+      queue = Queue()
+      app = wx.App()
+      frm = MainFrame(None, title='Geo Heatmap recorder')
+      # create a new Worker thread
+      threadStreem = WorkerStreamming(event)
+      # start the thread
       
-    #    frm = MyHtmlFrame(None, "Simple HTML File Viewer")  
-    frm.Show()
-    
-    FORMAT = pyaudio.paInt16
-    CHUNK = 1024
-    CHANNELS = 2
-    RATE = 44100
-    print ("--0--")
-    Audio = pyaudio.PyAudio()
-
-    stream = Audio.open(format=FORMAT,
-                    channels = CHANNELS,
-                    rate = RATE,
-                    output = True,
-                    frames_per_buffer = CHUNK,
-                    )
-    print("--1--")
-    udpThread  = Thread(target = udpStream, args=(CHUNK,))
-    AudioThread  = Thread(target = play, args=(stream, CHUNK,))
-    udpThread .setDaemon(True)
-    AudioThread.setDaemon(True)
-    udpThread .start()
-    AudioThread.start()
-    #udpThread .join()
-    #AudioThread.join()
-    print ("--2--")
-    app.MainLoop()
+#    frm = MyHtmlFrame(None, "Simple HTML File Viewer")  
+      frm.Show()
+      app.MainLoop()

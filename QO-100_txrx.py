@@ -37,6 +37,7 @@ maxValue = 2**16
 bars = 50
 audioInputDevice=[]
 audioInterface = 0
+frames = []
 
 class MainFrame(wx.Frame):
     """
@@ -445,55 +446,22 @@ class MainFrame(wx.Frame):
         #self.thread = threading.Thread(target=self.streamThread) #,args=(event))
         #self.thread.start() 
         
-class WorkerStreamming(Thread,Queue):
-    def __init__(self, event, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.event = event
-        #self.queue = queue.Queue()
+
+
+def udpStream():
+    udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+    while True:
+        if len(frames) > 0:
+            udp.sendto(frames.pop(0), ("127.0.0.1", 12345)) #
+            print("Sending audio...")
+    udp.close()
+
+def record(stream, CHUNK):
+    while True:
+        frames.append(stream.read(CHUNK))        
         
-    def run(self) -> None:
-        p = pyaudio.PyAudio()
-        audio_port = queue.get()
-        print("audio pot" ,audio_port)
-        stream = p.open(format=FORMAT,
-           channels=CHANNELS,
-           rate=RATE,   #rate=config.MIC_RATE,
-           input=True,
-           frames_per_buffer=CHUNK,
-           input_device_index= audio_port)
-        
-        
-        data = np.fromstring(stream.read(1024),dtype=np.int16)
-        dataL = data[0::2]
-        dataR = data[1::2]
-        peakL = np.abs(np.max(dataL)-np.min(dataL))/maxValue
-        peakR = np.abs(np.max(dataR)-np.min(dataR))/maxValue
-        lString = "#"*int(peakL*bars)+"-"*int(bars-peakL*bars)
-        rString = "#"*int(peakR*bars)+"-"*int(bars-peakR*bars)
-        #print("L=[%s]\tR=[%s]"%(lString, rString) , end="\r")
-        frm.audioGage.SetValue(int(peakL*100))
-        #item = peakL * 100
-        #queue.put(item, timeout=5)
-        #audioInterfaceLocal = queue.get(audioInterface) 
-        #print (int(peakL*100) , " " , frm.comboAudio.GetValue()) #,end="\r")
-        #print ( "peek =",int(item), "interface nr =" ,audioInterfaceLocal)# ,end="\r")
-        # Set up network connection
-        SERVER_IP = '192.168.10.218' # Replace with the IP address of remote machine
-        SERVER_PORT = 12345 # Choose a port number that is not used by other applications
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect((SERVER_IP, SERVER_PORT))
-        # Begin audio streaming
-        print("Streaming audio...")
-        while True:
-            #time.sleep(0.01)  
-            #print('Running ')
-            data = stream.read(CHUNK)
-            sock.sendall(data) # Send audio data to remote machine
-            if self.event.is_set():
-               print('The thread was stopped prematurely.')
-               break
-            else:
-               print('The thread was stopped maturely.')         
+
         
 if __name__ == '__main__':
     # When this module is run (not imported) then create the app, the
@@ -504,9 +472,33 @@ if __name__ == '__main__':
       app = wx.App()
       frm = MainFrame(None, title='Geo Heatmap recorder')
       # create a new Worker thread
-      threadStreem = WorkerStreamming(event)
+      #threadStreem = WorkerStreamming(event)
       # start the thread
       
 #    frm = MyHtmlFrame(None, "Simple HTML File Viewer")  
       frm.Show()
+      
+      CHUNK = 1024
+      FORMAT = pyaudio.paInt16 #Audio Codec
+      CHANNELS = 2 #Stereo or Mono
+      RATE = 44100 #Sampling Rate
+
+      Audio = pyaudio.PyAudio()
+
+      stream = Audio.open(format = FORMAT,
+                    channels = CHANNELS,
+                    rate = RATE,
+                    input = True,
+                    frames_per_buffer = CHUNK,
+                    )
+
+#Initialize Threads
+      AudioThread = Thread(target = record, args = (stream, CHUNK,))
+      udpThread = Thread(target = udpStream)
+      AudioThread.setDaemon(True)
+      udpThread.setDaemon(True)
+      AudioThread.start()
+      udpThread.start()
+    #AudioThread.join()
+    #udpThread.join()
       app.MainLoop()
