@@ -20,7 +20,7 @@ import threading
 from threading import Thread, Event
 from time import sleep
 from queue import Queue
-
+import configparser
 #import webbrowser
 #from rtlsdr import *
 #from numpy import *
@@ -58,10 +58,6 @@ class MainFrame(wx.Frame):
     def __init__(self, parent, title):
         # ensure the parent's __init__ is called
         super(MainFrame, self).__init__(parent, title=title, size=(1000, 700))
-#        super(Example, self).__init__(parent, title=title, size=(650, 250))
-#        flags = wx.DEFAULT_FRAME_STYLE & ~(wx.RESIZE_BORDER | wx.MAXIMIZE_BOX)
-#        super().__init__(None, title='Qo-100 TXRX', style=flags, size=wx.Size(1800, 900))
-        # create a panel in the frame
         self.Centre()
         pnl = wx.Panel(self,size=(800,600))
         
@@ -109,8 +105,8 @@ class MainFrame(wx.Frame):
         wx.StaticText(pnl, label='TCP Adress', pos=(15, 220))
         wx.StaticText(pnl, label='Port', pos=(190, 220))
         #control = masked.IpAddrCtrl(pnl, pos=(5, 240)) #, mask = '###.###.###.###') #,defaultValue='192.168.010.218')
-        ipaddr1 = wx.TextCtrl( pnl, -1, pos=(15, 240),size=(170, -1),value='192.168.10.218')
-        port1 = masked.TextCtrl( pnl, -1, pos=(190, 240),size=(70, -1),mask = '#####' ,defaultValue='12345')
+        self.ipaddr1 = wx.TextCtrl( pnl, -1, pos=(15, 240),size=(170, -1),value="172.0.0.1")
+        self.port1 = masked.TextCtrl( pnl, -1, pos=(190, 240),size=(70, -1),mask = '#####' ,defaultValue="12345")
         btn = wx.Button(pnl, label='Connect', pos=(15, 300), size=(60, -1))
 
         btn.Bind(wx.EVT_BUTTON, self.OnConnect)
@@ -139,6 +135,21 @@ class MainFrame(wx.Frame):
         self.CreateStatusBar()
         self.SetStatusText("Welcome to Qo-100 TXRX!")
 #        form2 = FormWithSizer(notebook)
+        config = configparser.RawConfigParser() 
+        try:
+           print ("loading config file")  
+           configFilePath = r'qo-100tx.conf'
+           config.read(configFilePath)
+           ip = config.get('qo-100tx', 'ip')
+           self.ipaddr1.SetValue(ip)
+           port = config.get('qo-100tx', 'port')
+           self.port1.SetValue(port)
+           mic = config.get('qo-100tx', 'mic_channel')
+           ptt = config.get('qo-100tx', 'ptt')
+           logfile = config.get('qo-100tx', 'logfile')
+        except configparser.NoSectionError:
+           print("No qo-100tx.conf file found. Please create config file in home directory")
+           exit()   
     def SetVal(self, e):
         
         state1 = str(self.rb1.GetValue())
@@ -448,13 +459,14 @@ class MainFrame(wx.Frame):
         
 
 
-def udpStream():
+def udpStream(ipaddr1,port1):
     udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
+    port = int(port1)
     while True:
         if len(frames) > 0:
-            udp.sendto(frames.pop(0), ("127.0.0.1", 12345)) #
-            print("Sending audio...")
+            #udp.sendto(frames.pop(0), ("127.0.0.1", 12345)) #
+            udp.sendto(frames.pop(0),(ipaddr1,port))
+            print("Sending audio...",ipaddr1 , port, end='\r')
     udp.close()
 
 def record(stream, CHUNK):
@@ -467,8 +479,8 @@ if __name__ == '__main__':
     # When this module is run (not imported) then create the app, the
     # frame, show it, and start the event loop.
       # create a new Event object
-      event = Event()
-      queue = Queue()
+      #event = Event()
+      #queue = Queue()
       app = wx.App()
       frm = MainFrame(None, title='Geo Heatmap recorder')
       # create a new Worker thread
@@ -493,8 +505,12 @@ if __name__ == '__main__':
                     )
 
 #Initialize Threads
+      port1 = frm.port1.GetValue()
+      print( "port1 =" ,port1)
+      ipaddr1 = frm.ipaddr1.GetValue()
+      print ("ipaddr1 = ",ipaddr1)
       AudioThread = Thread(target = record, args = (stream, CHUNK,))
-      udpThread = Thread(target = udpStream)
+      udpThread = Thread(target = udpStream,args = (ipaddr1 ,port1,))
       AudioThread.setDaemon(True)
       udpThread.setDaemon(True)
       AudioThread.start()

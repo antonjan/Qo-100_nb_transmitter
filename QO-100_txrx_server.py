@@ -20,6 +20,7 @@ import threading
 from threading import Thread, Event
 from time import sleep
 from queue import Queue
+import configparser
 
 import time
 import wx.lib.masked as masked
@@ -34,6 +35,7 @@ bars = 50
 audioInputDevice=[]
 audioInterface = 0
 frames = []
+#port1 = 123456
 
 class MainFrame(wx.Frame):
     """
@@ -54,7 +56,7 @@ class MainFrame(wx.Frame):
     def __init__(self, parent, title):
         # ensure the parent's __init__ is called
         super(MainFrame, self).__init__(parent, title=title, size=(1000, 700))
-
+        
         self.Centre()
         pnl = wx.Panel(self,size=(800,600))
         
@@ -68,8 +70,9 @@ class MainFrame(wx.Frame):
         wx.StaticText(pnl, label='TCP Adress', pos=(15, 150))
         wx.StaticText(pnl, label='Port', pos=(205, 150))
         #control = masked.IpAddrCtrl(pnl, pos=(5, 240)) #, mask = '###.###.###.###') #,defaultValue='192.168.010.218')
-        ipaddr1 = wx.TextCtrl( pnl, -1, pos=(15, 180),size=(170, -1),value='0.0.0.0')
-        port1 = masked.TextCtrl( pnl, -1, pos=(205, 180),size=(70, -1),mask = '#####' ,defaultValue='12345')
+        self.ipaddr1 = wx.TextCtrl( pnl, -1, pos=(15, 180),size=(170, -1),value="127.0.0.1")
+        #self.apaddr1.SetVal(ip)
+        self.port1 = masked.TextCtrl( pnl, -1, pos=(205, 180),size=(75, -1),mask = '######' ,defaultValue="12345")
         btn = wx.Button(pnl, label='Start to listen', pos=(15, 220), size=(100, -1))
         btn.Bind(wx.EVT_BUTTON, self.OnStartListen)
         btn2 = wx.Button(pnl, label='Stop listen', pos=(120, 220), size=(100, -1))
@@ -97,6 +100,21 @@ class MainFrame(wx.Frame):
         self.CreateStatusBar()
         self.SetStatusText("Welcome to Qo-100 TXRX!")
 #        form2 = FormWithSizer(notebook)
+        config = configparser.RawConfigParser() 
+        try:
+           print ("loading config file")  
+           configFilePath = r'qo-100rx.conf'
+           config.read(configFilePath)
+           ip = config.get('qo-100rx', 'ip')
+           self.ipaddr1.SetValue(ip)
+           port = config.get('qo-100rx', 'port')
+           self.port1.SetValue(port)
+           mic = config.get('qo-100rx', 'audio_channel')
+           ptt = config.get('qo-100rx', 'ptt')
+           logfile = config.get('qo-100rx', 'logfile')
+        except configparser.NoSectionError:
+           print("No qo-100tx.conf file found. Please create config file in home directory")
+           exit()   
     def SetVal(self, e):
         
         state1 = str(self.rb1.GetValue())
@@ -112,15 +130,7 @@ class MainFrame(wx.Frame):
            
 
     def OnStartListen(self, e):
-        print("start Listening stream")
-        # create a new Worker thread
-        event.clear() # clear stop event if it was stoped before
-        audioInterface = self.comboAudio.GetValue()
-        print("audio device = " , audioInterface)
-        queue.put(audioInterface) 
-        threadStreem = WorkerStreamming(event)
-        threadStreem.start()
-        print ("Listening for stream")
+        print ("do noting")
         
     def OnStopListen(self, e):
         event.set() # stop the thread
@@ -239,15 +249,20 @@ class MainFrame(wx.Frame):
         
     
 
+#def udpStream(CHUNK,ipaddr1,port1):
 def udpStream(CHUNK):
-
     udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    udp.bind(("127.0.0.1", 12345))
-
+    port =  int(port1)
+    #ipaddr = ipaddr1
+    try:
+        udp.bind((ipaddr1,port))
+    except OSError: # [Errno 98] Address already in use
+        print ("[Errno 98] Address already in use port is already in use please stop application using this port or change the port")    
+    #udp.bind((ipaddr,port))
     while True:
         soundData, addr = udp.recvfrom(CHUNK*CHANNELS*2)
         frames.append(soundData)
-        print("receiving audio...")
+        print("receiving audio...", end='\r')
     udp.close()
 
 def play(stream, CHUNK):
@@ -259,7 +274,7 @@ def play(stream, CHUNK):
                 while True:
                     stream.write(frames.pop(0), CHUNK)
         except IndexError:
-              print("error in index")
+              print("No Stream connection, Wating for connection")
         
                  
         
@@ -272,14 +287,22 @@ if __name__ == '__main__':
       
     #    frm = MyHtmlFrame(None, "Simple HTML File Viewer")  
     frm.Show()
-    
+    pnl = wx.Panel()
+    print("start Listening stream")
+    # create a new Worker thread
+    #audioInterface = self.comboAudio.GetValue()
+    #print("audio device = " , audioInterface)
     FORMAT = pyaudio.paInt16
     CHUNK = 1024
     CHANNELS = 2
     RATE = 44100
-    print ("--0--")
+    ipaddr1 = frm.ipaddr1.GetValue()
+    #ipaddr1 = "127.0.0.1"
+    #port1 = 12345
+    print( "ip =", ipaddr1)
+    port1 = frm.port1.GetValue()
+    print (" port = ",port1)
     Audio = pyaudio.PyAudio()
-
     stream = Audio.open(format=FORMAT,
                     channels = CHANNELS,
                     rate = RATE,
@@ -287,12 +310,14 @@ if __name__ == '__main__':
                     frames_per_buffer = CHUNK,
                     )
     print("--1--")
+    #udpThread  = Thread(target = udpStream, args=(CHUNK,ipaddr1,port1))
     udpThread  = Thread(target = udpStream, args=(CHUNK,))
     AudioThread  = Thread(target = play, args=(stream, CHUNK,))
     udpThread .setDaemon(True)
     AudioThread.setDaemon(True)
     udpThread .start()
     AudioThread.start()
+    print ("Listening for stream")
     #udpThread .join()
     #AudioThread.join()
     print ("--2--")
